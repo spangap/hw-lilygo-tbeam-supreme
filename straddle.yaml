@@ -1,0 +1,165 @@
+# hw-lilygo-tbeam-supreme — board HAL straddle for the LilyGo T-Beam S3 Supreme.
+#
+# A plain (non-buildable) board component: it doesn't decide what the device
+# DOES, it only makes the board usable by an app. The reticulous/reticulous
+# buildable adds it with `--with spangap/hw-lilygo-tbeam-supreme` and inherits
+# the board's pin map, bring-up hook and hardware kconfig.
+#
+# The Supreme is an ESP32-S3FN8 (8 MB flash, 8 MB *quad* PSRAM) with an SX1262,
+# a 1.3" SH1106 OLED, microSD, GNSS, IMU/RTC/magnetometer/BME280 sensors and an
+# AXP2101 PMU. Wired: the PMU rails (everything else is DEAD until the PMU
+# turns them on — see tbeamsupreme.cpp), LoRa, microSD, the OLED as a paged
+# status display via spangap/tinylcd (BOOT button advances the page), the GNSS
+# receiver via spangap/gps and the PCF8563 via spangap/spangap-rtc. The IMU,
+# magnetometer and BME280 stay unwired.
+#
+# The Supreme is a LINE, not a board: the same PCB ships with an SX1262, an
+# LR1121 or an SX1278, on identical pins. This straddle is the SX1262 one, and
+# detect.cpp asks the radio which part it is so a mismatch is caught at boot.
+schema_version: 1
+name: spangap/hw-lilygo-tbeam-supreme
+prefix: tbeamsupreme
+firmware: esp-idf
+version: 0.0.0
+platforms: [idf]
+# Board bring-up as a registered Service. TbeamSupremeBoard::onStart is
+# bare-hardware (AXP2101 rails on, SD + IMU CS park on the shared peripheral
+# SPI bus) and runs before spangapInit(). No onInit — the OLED UI is tinylcd's
+# own service, not a board hook.
+services:
+  - { class: TbeamSupremeBoard, header: tbeamsupreme.h }
+# What is soldered to this board, staged by the board that carries it: the
+# paged OLED UI (the screen is a mono OLED, so the buildable stays
+# display-agnostic), the GNSS receiver, and the PCF8563 wall clock. All three
+# are soft installs — a build that doesn't want one drops it with --without and
+# the gated kconfig: blocks below go with it.
+additional_installs:
+  - spangap/tinylcd
+  - spangap/gps
+  - spangap/spangap-rtc
+  - spangap/imu
+# Board VALUES, fed to the symbols other straddles / IDF DEFINE through the
+# collected staging/sdkconfig.spangap-fragments. A board straddle is non-
+# buildable, so its sdkconfig.defaults would be IGNORED — everything that
+# describes this hardware MUST live here in kconfig: to survive `--with`.
+kconfig:
+  # Board memory: ESP32-S3FN8 — 8 MB flash and 8 MB PSRAM, both *quad*-SPI
+  # (LilyGo's t_beam_supreme_hw.md product table; their Arduino setup says
+  # "PSRAM: QSPI PSRAM"). Like the Heltec V4 / T3-S3 and unlike the T-Deck's
+  # octal S3R8 — SPIRAM_MODE_QUAD, not _OCT.
+  - CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+  - CONFIG_SPIRAM_MODE_QUAD=y
+  # The board fits a 32.768 kHz crystal on the S3's own XTAL_32K pins (15/16,
+  # which nothing else here uses), so the RTC slow clock runs off it instead of
+  # the internal RC oscillator — a few ppm rather than a few percent, which is
+  # what sleep intervals and the clock between disciplines are measured with.
+  # Both vendors switch to it on this board. IDF falls back to the RC
+  # oscillator with a boot warning if the crystal doesn't start, so a unit
+  # without one still boots.
+  - CONFIG_RTC_CLK_SRC_EXT_CRYS=y
+  # State floor = the offset where the runtime read-write /state partition
+  # begins; /state then fills the rest of the real 8 MB chip. WITHOUT this the
+  # floor defaults to the whole flash container, so `app` expands to fill all
+  # 8 MB and NO /state partition exists. 6 MB = app+fixed plus growth headroom
+  # (same floor as the 16 MB Heltec V4); /state keeps the remaining ~2 MB,
+  # enough because the board carries a microSD slot for bulk data. Changing
+  # this relocates /state → existing devices factory-reset on the next boot.
+  - CONFIG_SPANGAP_MAX_FIRMWARE_KB=6144
+  # One SX1262 on SPI host 2, alone on its OWN bus (the peripherals get the
+  # other one — LilyGo: "Radio has its own SPI bus"). Pins per LilyGo's
+  # t_beam_supreme_hw.md, cross-checked against Meshtastic's
+  # variants/esp32s3/tbeam-s3-core. The SX1262 drives DIO2 as its own RF
+  # antenna switch and DIO3 supplies the 1.8 V TCXO. Powered from ALDO3.
+  - when: reticulous/iface-lora
+    set:
+      - CONFIG_LORA_COUNT=1
+      - CONFIG_LORA_SPI_HOST=2
+      - CONFIG_LORA_SCK_PIN=12
+      - CONFIG_LORA_MOSI_PIN=11
+      - CONFIG_LORA_MISO_PIN=13
+      - CONFIG_LORA0_CS_PIN=10
+      - CONFIG_LORA0_DIO1_PIN=1
+      - CONFIG_LORA0_BUSY_PIN=4
+      - CONFIG_LORA0_RST_PIN=5
+      - CONFIG_LORA0_TCXO_MV=1800
+      - CONFIG_LORA0_DIO2_RF_SWITCH=y
+      - CONFIG_LORA0_RADIO_SX1262=y
+  # microSD on the board's peripheral SPI bus (host 3) — a bus it SHARES with
+  # the QMI8658 IMU (CS 34), which is why onStart parks both CS lines. Powered
+  # from the PMU's BLDO1 rail (onStart). Mounted by spangapInit()'s
+  # fs_mount_sd().
+  - CONFIG_SPANGAP_SDCARD=y
+  - CONFIG_SPANGAP_SDCARD_BUS_SPI=y
+  - CONFIG_SPANGAP_SDCARD_SPI_HOST=3
+  - CONFIG_SPANGAP_SDCARD_SPI_PIN_CS=47
+  - CONFIG_SPANGAP_SDCARD_SPI_PIN_SCK=36
+  - CONFIG_SPANGAP_SDCARD_SPI_PIN_MOSI=35
+  - CONFIG_SPANGAP_SDCARD_SPI_PIN_MISO=37
+  # GNSS receiver (consumed by spangap/gps, staged above) — a Quectel L76K or a
+  # u-blox MAX-M10, depending on the unit; the gps straddle autobauds and names
+  # the chip it found. NMEA over UART1 8N1, powered from the PMU's ALDO4 rail,
+  # which onStart switches on only when this straddle is staged. Host RX <- GPS
+  # TX = 9; host TX -> GPS RX = 8. GPIO 7 is the L76K's FORCE_ON line, which is
+  # what lets gps wake a receiver it put into deep backup instead of asking for
+  # a power cycle (the pad is unconnected on the u-blox units, where the pulse
+  # is a harmless no-op). Gated on gps: the CONFIG_GPS_* symbols are DEFINED by
+  # that straddle's Kconfig.
+  - when: spangap/gps
+    set:
+      - CONFIG_GPS_UART_NUM=1
+      - CONFIG_GPS_RX_PIN=9
+      - CONFIG_GPS_TX_PIN=8
+      - CONFIG_GPS_FORCE_PIN=7
+      # PPS on GPIO 6 (it also drives the board's PPS LED, which is an output of
+      # the receiver, not of us). RTC-capable on the S3, so it could wake deep
+      # sleep later; today it is what disciplines the clock off the pulse
+      # instead of off a guess at the serial path's delay.
+      - CONFIG_GPS_PPS_PIN=6
+      # The receiver's supply is ALDO4 on the PMU, not a GPIO, so the board
+      # switches it through gpsBoardPower() in tbeamsupreme.cpp rather than
+      # through CONFIG_GPS_POWER_PIN. V_BCKP comes from the 18650 (LilyGo: hot
+      # start needs the battery fitted), so cutting ALDO4 leaves the receiver in
+      # hardware backup with its ephemeris — which is what makes "unpower when
+      # off" offerable here at all.
+      - CONFIG_GPS_POWER_KEEPS_BACKUP=y
+  # QMI8658 IMU (consumed by spangap/imu, staged above) on the peripheral SPI
+  # bus it shares with the microSD — the card's driver brings that host up
+  # first, so the imu straddle adopts it rather than initialising it. Its
+  # interrupt is on GPIO 33, outside the S3's RTC GPIO range (0-21) and so no
+  # use as a deep-sleep wake; the straddle polls the part's latched status
+  # anyway, which is why that costs nothing here. Which of INT1/INT2 the board
+  # wired is not documented — if the interrupt never fires, try 2.
+  - when: spangap/imu
+    set:
+      - CONFIG_IMU_SPI_HOST=3
+      - CONFIG_IMU_SPI_SCK_PIN=36
+      - CONFIG_IMU_SPI_MOSI_PIN=35
+      - CONFIG_IMU_SPI_MISO_PIN=37
+      - CONFIG_IMU_CS_PIN=34
+      - CONFIG_IMU_INT_PIN=33
+      - CONFIG_IMU_INT_LINE=1
+  # PCF8563 wall clock (consumed by spangap/spangap-rtc, staged above). It sits
+  # on the PMU's I2C bus, not on a bus of its own, and it is powered from ALDO2
+  # like the rest of the sensor side. onStart brings that bus up on controller
+  # 0 before any service runs, so the RTC adopts it by port rather than putting
+  # a second master on the same two wires.
+  - when: spangap/spangap-rtc
+    set:
+      - CONFIG_RTC_I2C_SDA_PIN=42
+      - CONFIG_RTC_I2C_SCL_PIN=41
+      - CONFIG_RTC_I2C_PORT=0
+  # 1.3" SH1106 128x64 OLED on the display/sensor I2C bus (SDA 17 / SCL 18 —
+  # tinylcd creates it on whichever controller the PMU bus left), powered from the
+  # PMU's ALDO1 rail (onStart). BOOT button (GPIO 0) advances the page.
+  # ADDRESS: 0x3C on the QMC6310U and QMC6309 units, 0x3D on the QMC6310N ones
+  # — the panel is strapped away from whichever address its magnetometer took
+  # (LilyGo's hw doc; V3.1 adds a selection resistor). tinylcd talks to one
+  # fixed address, so a QMC6310N board needs 0x3D here. Gated: without tinylcd
+  # staged these symbols don't exist.
+  - when: spangap/tinylcd
+    set:
+      - CONFIG_TINYLCD_SDA_PIN=17
+      - CONFIG_TINYLCD_SCL_PIN=18
+      - CONFIG_TINYLCD_I2C_ADDR=0x3C
+      - CONFIG_TINYLCD_SH1106=y
+      - CONFIG_TINYLCD_BUTTON_PIN=0
