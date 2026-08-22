@@ -117,10 +117,10 @@ kconfig:
       - CONFIG_GPS_PPS_PIN=6
       # The receiver's supply is ALDO4 on the PMU, not a GPIO, so the board
       # switches it through gpsBoardPower() in tbeamsupreme.cpp rather than
-      # through CONFIG_GPS_POWER_PIN. V_BCKP comes from the 18650 (LilyGo: hot
-      # start needs the battery fitted), so cutting ALDO4 leaves the receiver in
-      # hardware backup with its ephemeris — which is what makes "unpower when
-      # off" offerable here at all.
+      # through CONFIG_GPS_POWER_PIN. V_BCKP rides the PMU's always-on VRTC
+      # LDO (alive on battery or USB alike), so cutting ALDO4 leaves the
+      # receiver in hardware backup with its ephemeris — which is what makes
+      # the default s.gps.power=1 (supply follows enable) free here.
       - CONFIG_GPS_POWER_KEEPS_BACKUP=y
   # QMI8658 IMU (consumed by spangap/imu, staged above) on the peripheral SPI
   # bus it shares with the microSD — the card's driver brings that host up

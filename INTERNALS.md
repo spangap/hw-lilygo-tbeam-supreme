@@ -3,29 +3,73 @@
 Design notes for maintainers. User-facing behaviour and the pin map live in
 [README.md](README.md).
 
+## Power rails — the complete map
+
+From LilyGo's schematics (`schematic/T-Beam-S3-Supreme/` in the
+LilyGo-LoRa-Series repo: the shared `T-Beam-S3-Core.pdf` power/ESP32/RF sheets
+plus the `V3.0`/`V3.1` motherboard sheets — both revisions agree on all of
+this). The vendor's `t_beam_supreme_hw.md` PowerManage table is coarser and
+wrong in places; the schematic is the authority.
+
+| Channel | Net | Powers | This straddle |
+|---|---|---|---|
+| DC1 | `VDD3V3` | ESP32-S3 (+flash/PSRAM), **PCF8563 RTC** (via a 1N4148 + 1 kΩ, with its own backup cell), **QMI8658 IMU** and its strap pull-ups, the PMU-bus (42/41) 10 k pull-ups, exported to the expansion connector | never touched (system rail) |
+| DC2 | — | pin not connected | forced off |
+| DC3 | `VDCDC3` | nothing found on either Supreme revision (Meshtastic's "m.2 interface" comment is about the standalone T-Beam S3-Core product) | forced off |
+| DC4 | `VDCDC4` | expansion connector only (M.2 socket on V3.1, PN/PM pin headers on V3.0) | forced off |
+| DC5 | `VDCD5` | expansion connector only | forced off |
+| ALDO1 | `A_LDO1` | **OLED VDD**, **QMC6309/QMC6310 magnetometer**, **BME280**, and the display/sensor bus (17/18) 4.7 k pull-ups; also exported to the expansion connector | on, 3.3 V |
+| ALDO2 | `A_LDO2` | expansion connector only, per both schematics — but LilyGo's hw doc calls it "Sensor" and warns the 17/18 bus "will fail or freeze" with it off | on, 3.3 V (µA to keep, and the vendor warning stands) |
+| ALDO3 | `A_LDO3` | SX1262 | on, 3.3 V |
+| ALDO4 | `A_LDO4` | GNSS receiver VCC | on with gps staged, and gps's power switch |
+| BLDO1 | `B_LDO1` | microSD (on V3.0 also the high side of its SD-line level shifters) | on, 3.3 V |
+| BLDO2 | `B_LDO2` | expansion connector only | forced off |
+| DLDO1/DC1SW | — | pin not connected | forced off |
+| DLDO2/DC4SW | — | pin not connected | forced off |
+| CPUSLDO | — | pin not connected | forced off |
+| VRTC (RTCLDO) | `VRTC` | **L76K V_BCKP** and the PMU-IRQ (GPIO 40) pull-up | not switchable — the PMU's always-on RTC LDO, alive whenever the PMU has any input |
+| VBackup | — | pin not connected (the wall clock's backup is the PCF8563's own cell, not the PMU's button-battery charger) | never touched |
+| VSYS / VBUS / VBAT | — | exported to the expansion connector | never touched |
+
+Two consequences worth keeping in mind:
+
+- The GNSS "backup from the 18650" is mediated: V_BCKP rides VRTC, which runs
+  off whatever feeds the PMU — so a battery keeps it alive unplugged, USB keeps
+  it alive battery-less, and losing both loses the ephemeris.
+- **Both I2C buses (17/18 and 42/41) and the SD SPI bus route into the
+  expansion connector.** A module fitted there whose rails (ALDO2/BLDO2/DC4/
+  DC5) are off clamps those buses through its dead input stages — the display
+  bus stops dead with no log beyond I2C timeouts. Anything that populates the
+  socket must power it before the buses are used.
+
 ## The PMU-first rule
 
 Everything interesting on this board — SX1262 (ALDO3), display + BME280 +
-magnetometer (ALDO1), the sensor rail the display bus needs (ALDO2), microSD
-(BLDO1), GNSS (ALDO4) — is powered from AXP2101 rails that come up
-**disabled**. Any driver that touches its peripheral before the PMU enables the
-rail sees a dead chip and fails its probe, so `TbeamSupremeBoard::onStart`
-enables the rails first, in the start band, before `spangapInit()` (SD probe)
-and long before tinylcd's task (OLED init) or `loraInit()`. The 20 ms
-post-enable settle is for the rail, mirroring the V4's Vext settle.
+magnetometer + the 17/18 bus pull-ups (ALDO1), microSD (BLDO1), GNSS (ALDO4) —
+is powered from AXP2101 rails that come up **disabled**. Any driver that
+touches its peripheral before the PMU enables the rail sees a dead chip and
+fails its probe, so `TbeamSupremeBoard::onStart` enables the rails first, in
+the start band, before `spangapInit()` (SD probe) and long before tinylcd's
+task (OLED init) or `loraInit()`. The 20 ms post-enable settle is for the
+rail, mirroring the V4's Vext settle.
 
-**ALDO2 is not optional and is easy to miss**: it powers the sensor side of the
-17/18 I2C bus (and the PCF8563), and LilyGo's hardware doc says plainly that
-with it off "the I2C access will fail or freeze". A build that enables only
-ALDO1 gets a display that sometimes works and a bus that sometimes hangs.
+**ALDO2 is kept up alongside ALDO1** even though both schematic revisions show
+it reaching only the expansion connector: LilyGo's hardware doc calls it the
+sensor rail and says plainly that with it off "the I2C access will fail or
+freeze", and an unloaded LDO costs microamps against the risk of a bus that
+sometimes hangs on some hardware batch.
 
-The rail map is the PowerManage table of LilyGo's `t_beam_supreme_hw.md`, and
-Meshtastic's `Power.cpp` (`LILYGO_TBEAM_S3_CORE` branch) sets the same rails to
-the same 3.3 V. DC1 feeds the ESP32-S3 itself and lives in another register
-entirely, so nothing here can reach it. DC3/DC4/DC5 feed only the external M.2
-socket and BLDO2 only a pin header — both vendors switch them on regardless;
-this straddle leaves them off, because a rail with nothing on it is drain on a
-battery board. Plugging something into that socket is what should turn them on.
+The full channel-by-channel map is [above](#power-rails--the-complete-map);
+Meshtastic's `Power.cpp` (`LILYGO_TBEAM_S3_CORE` branch) sets the same live
+rails to the same 3.3 V. DC1 feeds the ESP32-S3 itself and shares its enable register
+(0x80) with nothing this straddle switches on — the read-modify-write there
+preserves it. DC3/DC4/DC5 feed only the external M.2 socket and BLDO2 only a
+pin header — both vendors switch them on regardless; this straddle **forces
+them off** (along with the unconnected DC2, CPUSLDO and DLDO1/2), because a
+rail with nothing on it is drain on a battery board and the PMU keeps rail
+state across an ESP32 reset — a unit that last ran a vendor firmware arrives
+here with those converters still up. Plugging something into that socket is
+what should turn them on.
 
 The bring-up writes AXP2101 registers directly (voltage regs 0x92..0x96 =
 (mV−500)/100, enable ctrl 0x90 bits ALDO1..4 = 0..3, BLDO1 = 4) instead of
@@ -126,10 +170,12 @@ The rail is also a **power switch**, which most boards do not give this
 straddle: `gpsBoardPower()` here switches ALDO4 over the PMU, and the board
 declares `CONFIG_GPS_POWER_KEEPS_BACKUP=y` because V_BCKP comes from the 18650,
 so a cut supply leaves the receiver in hardware backup with its ephemeris
-intact. That is what makes the "Unpower when off" row offerable here and absent
-elsewhere. It is used only for *off* — never inside the duty cycle, and never
-by the motion assist, which parks the receiver with the rail still up precisely
-so the return is a hot start.
+intact. That is what makes the "Power only while on" row (`s.gps.power`, default 1:
+the supply follows enable) offerable here and absent elsewhere — on this board
+the cut is free, because V_BCKP rides the PMU's always-on VRTC LDO and the
+receiver still hot-starts. The switch is used only for *off* — never inside the duty
+cycle, and never by the motion assist, which parks the receiver with the rail
+still up precisely so the return is a hot start.
 
 The board also publishes the L76K's FORCE_ON line (GPIO 7) as
 `CONFIG_GPS_FORCE_PIN`, and gps pulses it on enable. That pin is the only exit

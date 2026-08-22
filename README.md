@@ -104,8 +104,10 @@ its own CS. Powered from BLDO1. Mounted at boot when
 | OLED SDA / SCL | 17 / 18 | 1.3" SH1106 128×64 (`CONFIG_TINYLCD_SH1106=y`), no reset line |
 | page button (BOOT) | 0 | click = next status page; 500 ms hold = screen off; press wakes a dark screen |
 
-Powered from ALDO1, with ALDO2 up as well — that bus does not answer with the
-sensor rail off.
+Powered from ALDO1, which also supplies the bus pull-ups and the other two
+devices on it (BME280, magnetometer). ALDO2 is kept up as well on the strength
+of LilyGo's warning that the bus freezes without it — see the rail map in
+[INTERNALS.md](INTERNALS.md).
 
 **The panel's address depends on which magnetometer the unit carries**, because
 the two share the bus and the display is strapped away from the magnetometer's
@@ -124,13 +126,15 @@ there. (V3.1 boards add a selection resistor for both the OLED and the BME280.)
 
 A Quectel **L76K** or a u-blox **MAX-M10** depending on the unit — [gps](../gps)
 autobauds and names the one it found. Powered from ALDO4, which comes on only
-in a build that stages `gps`. GPS **backup power comes from the 18650**, so hot
-start needs a battery fitted, not just USB.
+in a build that stages `gps`. GPS **backup power rides the PMU's always-on
+VRTC LDO** — alive on battery or USB alike, gone only with both removed.
 
 The receiver's supply is **ALDO4**, and the board switches it for `gps` through
 `gpsBoardPower()` — a PMU register, which is the case `CONFIG_GPS_POWER_PIN`
-cannot express. V_BCKP comes from the 18650, so a cut supply still hot-starts,
-which is what `CONFIG_GPS_POWER_KEEPS_BACKUP=y` tells the straddle.
+cannot express. V_BCKP survives the cut (it is on VRTC, not ALDO4), so an
+unpowered receiver still hot-starts, which is what
+`CONFIG_GPS_POWER_KEEPS_BACKUP=y` tells the straddle — and why the default
+`s.gps.power=1` (supply follows enable) costs nothing here.
 
 ### IMU (owned by imu, pins published here)
 
@@ -148,7 +152,8 @@ if the line never fires, `CONFIG_IMU_INT_LINE=2` is the other guess.
 
 ### RTC (owned by spangap-rtc, wiring published here)
 
-The **PCF8563** at 0x51 sits on the PMU's I2C bus, powered from ALDO2. The
+The **PCF8563** at 0x51 sits on the PMU's I2C bus, powered from the always-on
+`VDD3V3` system rail through a diode, with its own backup cell behind it. The
 board creates that bus on controller 0 in `onStart`, and spangap-rtc adopts it
 (`CONFIG_RTC_I2C_PORT=0`) rather than putting a second master on the same
 wires. Its interrupt line (GPIO 14) is unwired.

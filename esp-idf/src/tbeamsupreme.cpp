@@ -36,7 +36,9 @@
 
 /* AXP2101 registers. Enable bits in 0x90: ALDO1..4 = bits 0..3, BLDO1 = bit 4;
  * the voltage register of each follows the same order from 0x92. */
+#define AXP2101_DCDC_EN0     0x80   /* bit0 DC1 (the ESP32-S3) .. bit4 DC5 */
 #define AXP2101_LDO_EN0      0x90
+#define AXP2101_LDO_EN1      0x91   /* bit0 DLDO2 */
 #define AXP2101_ALDO1_V      0x92
 #define AXP2101_ALDO2_V      0x93
 #define AXP2101_ALDO3_V      0x94
@@ -47,6 +49,11 @@
 #define AXP2101_EN_ALDO3     0x04
 #define AXP2101_EN_ALDO4     0x08
 #define AXP2101_EN_BLDO1     0x10
+#define AXP2101_EN_BLDO2     0x20
+#define AXP2101_EN_CPUSLDO   0x40
+#define AXP2101_EN_DLDO1     0x80
+#define AXP2101_EN_DC2_5     0x1E   /* DC2..DC5 in 0x80; never bit 0 = DC1 */
+#define AXP2101_EN_DLDO2     0x01   /* in 0x91 */
 #define AXP2101_MV(mv)       (uint8_t)(((mv) - 500) / 100)
 
 static i2c_master_dev_handle_t s_pmu = nullptr;
@@ -98,6 +105,20 @@ static void tbeamSupremePmuInit(void)
     dev.device_address  = BOARD_PMU_I2C_ADDR;
     dev.scl_speed_hz    = 100000;
     if (i2c_master_bus_add_device(h, &dev, &s_pmu) != ESP_OK) return;
+
+    /* The rails that feed only connectors (DC3/4/5 the M.2 socket, BLDO2 the
+     * pin header) or nothing at all (DC2, CPUSLDO, DLDO1/2) stay OFF — and
+     * must be forced off, not assumed off: the PMU keeps rail state across an
+     * ESP32 reset, and both vendor firmwares switch the connector rails on, so
+     * a unit reflashed from one of them arrives here with unloaded converters
+     * still running. Read-modify-write keeps DC1 (bit 0 of 0x80, the ESP32-S3
+     * itself) untouched. */
+    uint8_t en = 0;
+    if (pmuRead(AXP2101_DCDC_EN0, &en) && (en & AXP2101_EN_DC2_5))
+        pmuWrite(AXP2101_DCDC_EN0, (uint8_t)(en & ~AXP2101_EN_DC2_5));
+    pmuRails(AXP2101_EN_BLDO2 | AXP2101_EN_CPUSLDO | AXP2101_EN_DLDO1, false);
+    if (pmuRead(AXP2101_LDO_EN1, &en) && (en & AXP2101_EN_DLDO2))
+        pmuWrite(AXP2101_LDO_EN1, (uint8_t)(en & ~AXP2101_EN_DLDO2));
 
     /* Cold boot: power the display/sensor and microSD rails DOWN first. The
      * PMU keeps its rail state across an ESP32 reset, so a card left mid-
