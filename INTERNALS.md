@@ -100,7 +100,7 @@ the microSD shares the **peripheral** bus (host 3: SCK 36 / MOSI 35 / MISO 37,
 CS 47) with the QMI8658 IMU (CS 34). This is the T3-S3's dedicated-radio-bus
 arrangement, not the T-Deck's shared one.
 
-Consequence: the park in `onStart` is about the **peripheral** bus, not the
+Consequence: the chip-select park in `onStart` is about the **peripheral** bus, not the
 radio. Nothing in this build drives the IMU, so its CS would float, and a
 floating CS is all it takes for the IMU to answer onto MISO in the middle of
 the card's initialisation — which the SD probe in `spangapInit()` reads as a
