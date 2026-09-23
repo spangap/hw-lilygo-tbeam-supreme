@@ -30,14 +30,20 @@ services:
   - { class: TbeamSupremeBoard, header: tbeamsupreme.h }
 # What is soldered to this board, staged by the board that carries it: the
 # paged OLED UI (the screen is a mono OLED, so the buildable stays
-# display-agnostic), the GNSS receiver, and the PCF8563 wall clock. All three
-# are soft installs — a build that doesn't want one drops it with --without and
-# the gated kconfig: blocks below go with it.
+# display-agnostic), the GNSS receiver, the PCF8563 wall clock, the IMU, and the
+# SX1262 radio — the buildable stays radio-agnostic exactly as it stays
+# display-agnostic, so the LoRa settings and LoRaMon (which iface-lora pulls in)
+# reach only the boards that have a modem. All are soft installs — a build that
+# doesn't want one drops it with --without and the gated kconfig: blocks below
+# go with it.
 additional_installs:
   - spangap/tinylcd
   - spangap/gps
   - spangap/spangap-rtc
   - spangap/imu
+  # Gated on rns, because it is a Reticulum interface: a buildable that is not a
+  # Reticulum node must not inherit the mesh from the board's modem.
+  - { install: reticulous/iface-lora, when: reticulous/rns }
 # Board VALUES, fed to the symbols other straddles / IDF DEFINE through the
 # collected staging/sdkconfig.spangap-fragments. A board straddle is non-
 # buildable, so its sdkconfig.defaults would be IGNORED — everything that
