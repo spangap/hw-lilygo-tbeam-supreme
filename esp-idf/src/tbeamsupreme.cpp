@@ -90,7 +90,7 @@ static void tbeamSupremePmuInit(void)
 {
     i2c_master_bus_config_t bus = {};
     /* Controller 0, named rather than auto-allocated: the PCF8563 shares these
-     * wires, and spangap-rtc adopts this bus by port number
+     * wires, and rtc adopts this bus by port number
      * (CONFIG_RTC_I2C_PORT). tinylcd auto-allocates and gets the other one. */
     bus.i2c_port          = 0;
     bus.sda_io_num        = (gpio_num_t)BOARD_PMU_SDA_PIN;

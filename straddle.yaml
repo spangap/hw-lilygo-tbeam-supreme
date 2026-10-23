@@ -10,7 +10,7 @@
 # AXP2101 PMU. Wired: the PMU rails (everything else is DEAD until the PMU
 # turns them on — see tbeamsupreme.cpp), LoRa, microSD, the OLED as a paged
 # status display via spangap/tinylcd (BOOT button advances the page), the GNSS
-# receiver via spangap/gps and the PCF8563 via spangap/spangap-rtc. The IMU,
+# receiver via spangap/gps and the PCF8563 via spangap/rtc. The IMU,
 # magnetometer and BME280 stay unwired.
 #
 # The Supreme is a LINE, not a board: the same PCB ships with an SX1262, an
@@ -39,7 +39,7 @@ services:
 additional_installs:
   - spangap/tinylcd
   - spangap/gps
-  - spangap/spangap-rtc
+  - spangap/rtc
   - spangap/imu
   # Gated on rns, because it is a Reticulum interface: a buildable that is not a
   # Reticulum node must not inherit the mesh from the board's modem.
@@ -144,12 +144,12 @@ kconfig:
       - CONFIG_IMU_CS_PIN=34
       - CONFIG_IMU_INT_PIN=33
       - CONFIG_IMU_INT_LINE=1
-  # PCF8563 wall clock (consumed by spangap/spangap-rtc, staged above). It sits
+  # PCF8563 wall clock (consumed by spangap/rtc, staged above). It sits
   # on the PMU's I2C bus, not on a bus of its own, and it is powered from ALDO2
   # like the rest of the sensor side. onStart brings that bus up on controller
   # 0 before any service runs, so the RTC adopts it by port rather than putting
   # a second master on the same two wires.
-  - when: spangap/spangap-rtc
+  - when: spangap/rtc
     set:
       - CONFIG_RTC_I2C_SDA_PIN=42
       - CONFIG_RTC_I2C_SCL_PIN=41

@@ -5,7 +5,7 @@
  * 8 MB *quad* PSRAM) with an SX1262, a 1.3" SH1106 OLED, a microSD slot and an
  * AXP2101 PMU. Wired: the PMU rails, LoRa, microSD, the OLED as a paged status
  * display via spangap/tinylcd, the GNSS receiver via spangap/gps and the
- * PCF8563 via spangap/spangap-rtc (all four's pins published in
+ * PCF8563 via spangap/rtc (all four's pins published in
  * straddle.yaml). The QMI8658 IMU, QMC6310 magnetometer and BME280 stay
  * unwired. See tbeamsupreme.cpp for the implementation and the board
  * reference: https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series
@@ -19,7 +19,7 @@
  * The SX1262's pins, the SD pins, the OLED pins, the GNSS UART and the RTC's
  * bus are NOT wired here: they belong to iface-lora's CONFIG_LORA*,
  * spangap-core's CONFIG_SPANGAP_SDCARD_*, tinylcd's CONFIG_TINYLCD_*, gps's
- * CONFIG_GPS_* and spangap-rtc's CONFIG_RTC_* knobs, set as board VALUES in
+ * CONFIG_GPS_* and rtc's CONFIG_RTC_* knobs, set as board VALUES in
  * this straddle's straddle.yaml `kconfig:` block. This header carries only
  * what no other straddle owns.
  */
@@ -37,12 +37,12 @@
  * + BME280 + magnetometer (ALDO1), the sensor rail the I2C bus itself needs
  * (ALDO2), GNSS (ALDO4) and microSD (BLDO1) hang off its rails and are DEAD
  * until it enables them — PMU bring-up must precede every other peripheral.
- * onStart creates this bus on controller 0 and spangap-rtc adopts it there
+ * onStart creates this bus on controller 0 and rtc adopts it there
  * (CONFIG_RTC_I2C_PORT) to reach the RTC. */
 #define BOARD_PMU_SDA_PIN       42
 #define BOARD_PMU_SCL_PIN       41
 #define BOARD_PMU_I2C_ADDR      0x34
-#define BOARD_RTC_I2C_ADDR      0x51   /* PCF8563, same bus (spangap-rtc's chip) */
+#define BOARD_RTC_I2C_ADDR      0x51   /* PCF8563, same bus (rtc's chip) */
 
 /* The board's peripheral SPI bus: the microSD and the QMI8658 IMU, one CS
  * each. straddle.yaml publishes the same numbers to spangap-core as

@@ -144,7 +144,7 @@ Two buses, deliberately separate owners:
 - **PMU bus** (SDA 42 / SCL 41): created by this straddle in onStart —
   single-threaded, so no creation race — and kept (handle cached) for a
   future PMU driver. The port is named, **0**, not auto-allocated, because the
-  PCF8563 at 0x51 hangs off the same two wires: spangap-rtc adopts this bus by
+  PCF8563 at 0x51 hangs off the same two wires: rtc adopts this bus by
   port number (`CONFIG_RTC_I2C_PORT=0`, its shared-bus mode) instead of
   creating a second master on them. That mode exists for this board — it was
   the first hardware to need it. The board must therefore keep controller 0,

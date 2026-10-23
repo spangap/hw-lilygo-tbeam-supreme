@@ -21,7 +21,7 @@ spangap/hw-lilygo-tbeam-supreme`.
 Wired: the **PMU rails**, **LoRa**, **microSD**, the **1.3" SH1106 OLED** as a
 paged status display via [tinylcd](../tinylcd) (the BOOT button advances the
 page), the **GNSS receiver** via [gps](../gps) and the **PCF8563 clock** via
-[spangap-rtc](../spangap-rtc). The last three are staged by this board through
+[rtc](../rtc). The last three are staged by this board through
 `additional_installs`, with their pins fed through gated `kconfig:` groups. The
 IMU, magnetometer and BME280 stay unwired.
 
@@ -65,7 +65,7 @@ bare-hardware bring-up in two steps, in this order:
    [INTERNALS.md](INTERNALS.md).
 There is no `init:`-band companion — the OLED UI, the GNSS reader and the
 clock are [tinylcd](../tinylcd)'s, [gps](../gps)'s and
-[spangap-rtc](../spangap-rtc)'s own services, not board hooks.
+[rtc](../rtc)'s own services, not board hooks.
 
 ## Hardware & pin map
 
@@ -150,11 +150,11 @@ cannot wake deep sleep — the straddle polls the part's latched status anyway, 
 nothing here depends on it. Whether the board wired INT1 or INT2 is undocumented;
 if the line never fires, `CONFIG_IMU_INT_LINE=2` is the other guess.
 
-### RTC (owned by spangap-rtc, wiring published here)
+### RTC (owned by rtc, wiring published here)
 
 The **PCF8563** at 0x51 sits on the PMU's I2C bus, powered from the always-on
 `VDD3V3` system rail through a diode, with its own backup cell behind it. The
-board creates that bus on controller 0 in `onStart`, and spangap-rtc adopts it
+board creates that bus on controller 0 in `onStart`, and rtc adopts it
 (`CONFIG_RTC_I2C_PORT=0`) rather than putting a second master on the same
 wires. Its interrupt line (GPIO 14) is unwired.
 
@@ -207,7 +207,7 @@ This board defines no storage keys of its own. Runtime LoRa parameters live at
 `s.lora.*` ([iface-lora](../iface-lora)); the SD mount is owned by
 [spangap-core](../spangap-core); the display at `s.tinylcd.*`
 ([tinylcd](../tinylcd)); the receiver at `s.gps.*` ([gps](../gps)); the clock
-publishes `rtc.present` ([spangap-rtc](../spangap-rtc)).
+publishes `rtc.present` ([rtc](../rtc)).
 
 ## Dependencies
 
@@ -220,7 +220,7 @@ publishes `rtc.present` ([spangap-rtc](../spangap-rtc)).
 - [gps](../gps) — staged by this board; owns the GNSS UART, the autobaud and
   the fix, pins supplied via Kconfig. Drop it with
   `--without spangap/gps` and the ALDO4 rail stays off with it.
-- [spangap-rtc](../spangap-rtc) — staged by this board; owns the PCF8563,
+- [rtc](../rtc) — staged by this board; owns the PCF8563,
   adopting the PMU bus this board creates.
 - [imu](../imu) — staged by this board; owns the QMI8658 and publishes whether
   the device is moving. Dropped (`--without spangap/imu`), the board falls back
